@@ -1,0 +1,148 @@
+
+
+name: CI-CD
+
+
+on: 
+  push:
+    branches: [ "main" ]
+    paths: 
+      - '2048/**'
+         
+
+  workflow_dispatch:   
+  
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}               
+  ECR_REPOSITORY: myapp/2048           
+  ECS_SERVICE: 2048                
+  ECS_CLUSTER: 2048                 
+  ECS_TASK_DEFINITION: 2048/.aws/task-definition.json 
+                                               
+  CONTAINER_NAME: 2048      
+    
+permissions:
+  id-token: write   
+  contents: read
+  security-events: write
+   
+defaults:
+  run:
+    shell: bash
+    working-directory: 2048
+
+jobs:
+ 
+  build:
+
+    
+    runs-on: ubuntu-latest
+    concurrency: 
+      group: build-${{ github.ref }}
+      cancel-in-progress: true
+
+    outputs:
+      image: ${{ steps.build-image.outputs.image }}
+
+   
+    steps:
+      - name: Git clone the repositery
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7.0.1
+         
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd #v6.3.0
+        with:
+          role-to-assume: ${{ vars.OIDC_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION}}
+          mask-aws-account-id: false
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd #v2.1.7
+
+      -  name: Set up Docker Buildx
+         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 #v4.4.1
+
+      - name: Build image to Amazon ECR
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          REPOSITORY: myapp/2048   
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker buildx build --load -t $REGISTRY/$REPOSITORY:$IMAGE_TAG . \
+          --cache-from type=gha \
+          --cache-to type=gha,mode=max
+
+      - name: Scan image
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          REPOSITORY: myapp/2048   
+          IMAGE_TAG: ${{ github.sha }}
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 #v7.4.2
+        with:
+         image: ${{ steps.login-ecr.outputs.registry }}/${{env.REPOSITORY}}:${{ github.sha }}
+         fail-build: false
+         severity-cutoff: critical
+        
+      - name: push docker image to Amazon ECR
+        id: build-image
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          REPOSITORY: myapp/2048   
+          IMAGE_TAG: ${{ github.sha }}
+        run: |  
+          docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
+          echo "image=$REGISTRY/$REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+  deploy:
+
+    needs: build
+
+    runs-on: ubuntu-latest
+    
+    steps:
+
+      - name: Git clone the repositery
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7.0.1
+        
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd #v6.3.0
+        with:
+          role-to-assume: ${{ vars.OIDC_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION}}
+          mask-aws-account-id: false
+
+      - name: Fill in the new image ID in the Amazon ECS task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@8d79160660ad39c402a16e5fc7cd2a32e8f7d6b7 #v1.9.1
+        with:
+          task-definition: ${{ env.ECS_TASK_DEFINITION }}
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ needs.build.outputs.image }}
+
+      - name: Deploy Amazon ECS task definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@a00d4d57ac0de1a99b39fe469f3d898d38717c2b #v2.6.4
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          desired-count: 2
+          wait-for-service-stability: true
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

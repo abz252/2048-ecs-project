@@ -109,10 +109,9 @@ This allows infrastructure teardown to be managed independently from application
 - **Why ECS over EKS** — Simplifies container orchestration while avoiding the operational overhead of managing Kubernetes.
 - **Why private subnets for ECS** — Keeps application tasks isolated from direct public internet access.
 - **Why two Availability Zones** — Improves availability and provides fault tolerance across Availability Zones.
-- **Why one NAT Gateway** — Reduces infrastructure costs, trading off some availability and potentially introducing cross-AZ networking costs.
 - **Why ALB** — Provides application traffic distribution and health-based routing.
 - **Why Route 53 and ACM** — Provides managed DNS and TLS certificate management.
- **Why ECS deployment circuit breaker** — Automatically rolls back unsuccessful deployments to maintain application availability.
+- **Why ECS deployment circuit breaker** — Automatically rolls back unsuccessful deployments to maintain application availability.
 - **Why rolling deployment percentages** — Maintains healthy application capacity while allowing ECS to launch replacement tasks before terminating existing ones.
 - **Why graceful shutdown** — Allows NGINX to finish processing existing requests before container termination.
 - **Why Terraform modules** — Promotes reusable, maintainable and consistent infrastructure definitions.
